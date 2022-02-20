@@ -1,0 +1,4 @@
+#include "config.hpp"
+
+const char *wifi_ssid = ""; // Enter your WiFi SSID for your NodeMCU
+const char *wifi_password = ""; // Enter your WiFi password for your NodeMCU
