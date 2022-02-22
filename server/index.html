@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NodeMCU OTA Platform</title>
+    <script src="https://cdn.jsdelivr.net/npm/vue@2.6.14/dist/vue.js"></script>
+    <style>
+*{box-sizing:border-box}
+body,input,button{font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;font-size:16px;line-height:1.5;}
+body{margin:auto;padding:1em;max-width:64em;background-color:#fff;color:#111}
+a{color:#16c}
+    </style>
+</head>
+<body>
+    <div id="app">
+        <h1>NodeMCU OTA Platform</h1>
+
+        <h2>Devices</h2>
+            <div v-if="!loadingDevices">
+            <div v-if="devices.length > 0">
+                <ul v-for="device in devices">
+                    <li>
+                        {{ device.name }}: <b><code>{{ device.key }}</code></b>
+                        <b v-if="device.connected" style="color: green;">ONLINE</b>
+                        <b v-else style="color: red;">OFFLINE</b>
+                        <button style="float: right;" @click="deleteDevice(device)">&times; Delete device</button>
+                    </li>
+                </ul>
+            </div>
+            <p v-else><i>No devices exists right now!</i></p>
+        </div>
+        <p v-else><i>Loading devices data...</i></p>
+
+        <form @submit.prevent="newDevice">
+            <input v-model="newDeviceName" placeholder="New device name">
+            <button type="submit">Create new device</button>
+        </form>
+
+        <p>Made by <a href="https://bastiaan.ml" target="_blank">Bastiaan van der Plaat</a></p>
+    </div>
+
+    <script>
+class Connection {
+    constructor(url) {
+        this.ws = new WebSocket(url);
+        this.connected = false;
+        this.callbacks = [];
+        this.ws.onopen = this.onOpen.bind(this);
+        this.ws.onmessage = this.onMessage.bind(this);
+    }
+
+    onOpen() {
+        this.connected = true;
+        if (this.onopen != undefined) {
+            this.onopen();
+        }
+    }
+
+    onMessage(event) {
+        const { id, type, data } = JSON.parse(event.data);
+        console.log('RECEIVE', { id, type, data });
+        const callback = this.callbacks.find(callback => callback.id == id && callback.type == type);
+        if (callback != null) {
+            callback.callback(data);
+            this.callbacks = this.callbacks.filter(callback => !(callback.id == id && callback.type == type));
+        } else if (this.onmessage != undefined) {
+            this.onmessage(type, data);
+        }
+    }
+
+    send(type, data, callback) {
+        const id = Date.now();
+        console.log('SEND', { id, type, data });
+        this.ws.send(JSON.stringify({ id, type, data }));
+        if (callback != undefined) {
+            this.callbacks.push({ id, type, callback });
+        }
+    }
+}
+
+let con;
+
+const app = new Vue({
+    el: '#app',
+
+    data: {
+        devices: [],
+        loadingDevices: true,
+        newDeviceName: '',
+        time: Date.now()
+    },
+
+    created() {
+        con = new Connection('ws://localhost:8080/ws');
+        con.onopen = () => {
+            this.fetchDevices();
+        };
+        con.onmessage = (type, data) => {
+            if (type == 'devices.store') {
+                this.devices.push(data.device);
+            }
+
+            if (type == 'devices.update') {
+                // ...
+            }
+
+            if (type == 'devices.delete') {
+                this.devices = this.devices.filter(device => device.id != data.id);
+            }
+        };
+    },
+
+    methods: {
+        fetchDevices() {
+            con.send('devices.index', {}, data => {
+                this.devices = data.devices;
+                this.loadingDevices = false;
+            });
+        },
+
+        newDevice() {
+            con.send('devices.store', { name: this.newDeviceName }, data => {
+                if (data.success) {
+                    this.devices.push(data.device);
+                    this.newDeviceName = '';
+                }
+            });
+        },
+
+        deleteDevice(device) {
+            this.devices = this.devices.filter(otherDevice => otherDevice.id != device.id);
+            con.send('devices.delete', { id: device.id }, () => {});
+        }
+    }
+})
+    </script>
+</body>
+</html>

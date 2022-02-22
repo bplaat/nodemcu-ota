@@ -1,2 +1,2 @@
-# Simple NodeMCU v2 OTA Example
-A simple NodeMCU v2 over-the-air update example
+# Simple NodeMCU OTA Platform
+A simple NodeMCU over-the-air update platform service inspired by [Blynk](https://blynk.io/)

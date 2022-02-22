@@ -1,0 +1,19 @@
+{
+  "name": "nodemcu-ota-server",
+  "version": "0.1.0",
+  "description": "The Node.js server for the simple NodeMCU OTA platform",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon --ignore db",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Bastiaan van der Plaat",
+  "license": "MIT",
+  "dependencies": {
+    "ws": "^8.5.0"
+  },
+  "devDependencies": {
+    "nodemon": "^2.0.15"
+  }
+}
