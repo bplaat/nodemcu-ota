@@ -2,3 +2,5 @@
 
 const char *wifi_ssid = ""; // Enter your WiFi SSID for your NodeMCU
 const char *wifi_password = ""; // Enter your WiFi password for your NodeMCU
+const char *websockets_url = ""; // Enter your websockets url
+const char *device_key = ""; // Enter your device key

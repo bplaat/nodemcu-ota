@@ -1,19 +1,22 @@
 #include <Arduino.h>
 #include <ESP8266WiFi.h>
 #include <ArduinoOTA.h>
+#include <ArduinoWebsockets.h>
+#include <ArduinoJson.h>
 #include "config.hpp"
 
 #define INTERNAL_LED_PIN 2
 
-#define BLINK_TIMEOUT 500
+using namespace websockets;
 
-uint32_t blinkTime;
+WebsocketsClient client;
+
+bool internal_led = false;
 
 // Connect to the WiFi network with config.cpp values
 void wifi_connect() {
     Serial.print("\nConnecting to ");
     Serial.print(wifi_ssid);
-    Serial.print("...");
 
     WiFi.begin(wifi_ssid, wifi_password);
     while (WiFi.status() != WL_CONNECTED) {
@@ -27,7 +30,7 @@ void wifi_connect() {
 // Init OTA and set some serial log handlers
 void ota_start() {
     ArduinoOTA.setPort(8123);
-    ArduinoOTA.setPassword((const char *)"eopS054jWKnDVXH5h6CMD8frfssjOJDe");
+    ArduinoOTA.setPassword(device_key);
 
     ArduinoOTA.onStart([]() {
         Serial.println("OTA Start");
@@ -52,25 +55,59 @@ void ota_start() {
     Serial.println("ArduinoOTA started...");
 }
 
+void websockets_connect() {
+    client.connect(websockets_url);
+
+    // Send devices connect message
+    StaticJsonDocument<512> doc;
+    JsonObject messageJson = doc.to<JsonObject>();
+    messageJson["id"] = millis();
+    messageJson["type"] = "devices.connect";
+    JsonObject dataJson = messageJson.createNestedObject("data");
+    dataJson["key"] = device_key;
+    String connectMessage;
+    serializeJson(doc, connectMessage);
+    client.send(connectMessage);
+
+    client.onMessage([](WebsocketsMessage msg) {
+        // Parse incoming messages
+        StaticJsonDocument<512> doc;
+        deserializeJson(doc, msg.data());
+        Serial.print("RECEIVE ");
+        Serial.println(msg.data());
+
+        // Listen to device value changes
+        if (doc["type"] == "devices.connect") {
+            JsonArray values = doc["data"]["values"];
+            for (JsonObject value : values) {
+                if (value["name"] == "internal_led") {
+                    internal_led = value["value"];
+                }
+            }
+        }
+        if (doc["type"] == "values.update") {
+            if (doc["data"]["value"]["name"] == "internal_led") {
+                internal_led = doc["data"]["value"]["value"];
+            }
+        }
+    });
+}
+
 void setup() {
     Serial.begin(9600);
 
     pinMode(INTERNAL_LED_PIN, OUTPUT);
-    digitalWrite(INTERNAL_LED_PIN, LOW);
+    digitalWrite(INTERNAL_LED_PIN, HIGH); // Reversed
 
     wifi_connect();
-
     ota_start();
-
-    blinkTime = millis();
+    websockets_connect();
 }
 
 void loop() {
     ArduinoOTA.handle();
+    client.poll();
 
-    // Blink the internal LED for fun
-    if (millis() - blinkTime >= BLINK_TIMEOUT) {
-        digitalWrite(INTERNAL_LED_PIN, !digitalRead(INTERNAL_LED_PIN));
-        blinkTime = millis();
-    }
+    // Reflect online device values
+    digitalWrite(INTERNAL_LED_PIN, internal_led ? LOW : HIGH); // Reversed
 }

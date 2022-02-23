@@ -44,9 +44,12 @@ wss.on('connection', ws => {
         ws.send(JSON.stringify({ id, type, data }));
     }
 
-    function broadcast(type, data) {
+    function broadcast(type, data, ignoreDeviceConnections) {
         const id = Date.now();
-        wss.clients.forEach(function each(client) {
+        wss.clients.forEach(function (client) {
+            if (ignoreDeviceConnections && 'isDeviceConnection' in client) {
+                return;
+            }
             if (client != ws && client.readyState == WebSocket.OPEN) {
                 console.log('[WS] BROADCAST', { id, type, data });
                 client.send(JSON.stringify({ id, type, data }));
@@ -153,11 +156,12 @@ wss.on('connection', ws => {
 
             // Update device state to connected
             connectedDevice.connected = true;
+            ws.isDeviceConnection = true;
             devicesDirty = true;
 
             // Send success response back
             response(id, type, { success: true, id: connectedDevice.id, values: values.filter(value => value.device_id == connectedDevice.id) });
-            broadcast(type, { id: connectedDevice.id });
+            broadcast(type, { id: connectedDevice.id }, true);
         }
 
         // ###########################################################
@@ -319,7 +323,7 @@ wss.on('connection', ws => {
         if (connectedDevice != null) {
             connectedDevice.connected = false;
             devicesDirty = true;
-            broadcast('devices.disconnect', { id: connectedDevice.id });
+            broadcast('devices.disconnect', { id: connectedDevice.id }, true);
         }
     });
 });
