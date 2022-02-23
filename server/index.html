@@ -8,9 +8,12 @@
     <script src="https://cdn.jsdelivr.net/npm/vue@2.6.14/dist/vue.js"></script>
     <style>
 *{box-sizing:border-box}
-body,input,button{font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;font-size:16px;line-height:1.5;}
+body,input,select,button{font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;font-size:16px;line-height:1.5;}
 body{margin:auto;padding:1em;max-width:64em;background-color:#fff;color:#111}
-a{color:#16c}
+a{color:#16c}.mt-0{margin-top:0}.mb-1{margin-bottom:1em}.is-pulled-right{float:right}
+.box{padding:1em;margin-bottom:.5em;border:1px solid black}
+.box.is-active{margin-bottom:-1px;background-color:#eee}
+.text-green{color:green}.text-red{color:red}
     </style>
 </head>
 <body>
@@ -18,23 +21,78 @@ a{color:#16c}
         <h1>NodeMCU OTA Platform</h1>
 
         <h2>Devices</h2>
-            <div v-if="!loadingDevices">
-            <div v-if="devices.length > 0">
-                <ul v-for="device in devices">
-                    <li>
-                        {{ device.name }}: <b><code>{{ device.key }}</code></b>
-                        <b v-if="device.connected" style="color: green;">ONLINE</b>
-                        <b v-else style="color: red;">OFFLINE</b>
-                        <button style="float: right;" @click="deleteDevice(device)">&times; Delete device</button>
-                    </li>
-                </ul>
+        <div v-if="!loadingDevices">
+            <div v-if="devices.length > 0" class="mb-1">
+                <div v-for="device in devices" :key="device.id">
+                    <div @click="selectDevice(device)" :class="{ 'box': true, 'is-active': selectedDevice != null && selectedDevice.id == device.id }">
+                        {{ device.name }}: <b><code>{{ device.key }}</code> ({{ device.values.length }} values)</b>
+                        <b v-if="device.connected" class="text-green">ONLINE</b>
+                        <b v-else class="text-red">OFFLINE</b>
+                        <button class="is-pulled-right" @click.prevent="deleteDevice(device)">&times; Delete device</button>
+                    </div>
+                    <div v-if="selectedDevice != null && selectedDevice.id == device.id" class="box">
+                        <!-- Update device form -->
+                        <h3 class="mt-0">Update device</h3>
+                        <form @submit.prevent="updateDevice">
+                            <input v-model="updateDeviceName" placeholder="Device name">
+                            <button type="submit">Update device</button>
+                        </form>
+
+                        <h3>Device values</h3>
+                        <div v-if="device.values.length > 0" class="mb-1">
+                            <div v-for="value in device.values">
+                                <div @click="selectValue(value)" :class="{ 'box': true, 'is-active': selectedValue != null && selectedValue.id == value.id }">
+                                    <code>{{ value.name }}</code>: <code>{{ value.type }}</code> =
+                                    <b v-if="value.type == 'boolean' || value.type == 'int' || value.type == 'float'"><code>{{ value.value }}</code></b>
+                                    <b v-if="value.type == 'string'"><code>'{{ value.value }}'</code></b>
+                                    <button class="is-pulled-right" @click.prevent="deleteValue(value)">&times; Delete value</button>
+                                </div>
+                                <div v-if="selectedValue != null && selectedValue.id == value.id" class="box">
+                                    <!-- Update value form -->
+                                    <form @submit.prevent="updateValue">
+                                        <select v-model="updateValueType">
+                                            <option value="boolean">Boolean</option>
+                                            <option value="int">Int</option>
+                                            <option value="float">Float</option>
+                                            <option value="string">String</option>
+                                        </select>
+                                        <input v-model="updateValueName" placeholder="Value name">
+
+                                        <label v-if="updateValueType == 'boolean'" for="value_boolean">
+                                            <input type="checkbox" id="value_boolean" v-model="updateValueValue"> Value boolean value
+                                        </label>
+                                        <input v-if="updateValueType == 'int'" type="number" v-model="updateValueValue" placeholder="Value int value">
+                                        <input v-if="updateValueType == 'float'" type="number" step="0.000001" v-model="updateValueValue" placeholder="Value float value">
+                                        <input v-if="updateValueType == 'string'" type="text" v-model="updateValueValue" placeholder="Value string value">
+
+                                        <button type="submit">Update value</button>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                        <p v-else><i>No device values exists right now!</i></p>
+
+                        <!-- Store value form -->
+                        <form @submit.prevent="storeValue">
+                            <select v-model="storeValueType">
+                                <option value="boolean">Boolean</option>
+                                <option value="int">Int</option>
+                                <option value="float">Float</option>
+                                <option value="string">String</option>
+                            </select>
+                            <input v-model="storeValueName" placeholder="New value name">
+                            <button type="submit">Create new value for device</button>
+                        </form>
+                    </div>
+                </div>
             </div>
             <p v-else><i>No devices exists right now!</i></p>
         </div>
         <p v-else><i>Loading devices data...</i></p>
 
-        <form @submit.prevent="newDevice">
-            <input v-model="newDeviceName" placeholder="New device name">
+        <!-- Store device form -->
+        <form @submit.prevent="storeDevice">
+            <input v-model="storeDeviceName" placeholder="New device name">
             <button type="submit">Create new device</button>
         </form>
 
@@ -81,15 +139,23 @@ class Connection {
 }
 
 let con;
-
 const app = new Vue({
     el: '#app',
 
     data: {
         devices: [],
         loadingDevices: true,
-        newDeviceName: '',
-        time: Date.now()
+        storeDeviceName: '',
+
+        selectedDevice: null,
+        updateDeviceName: null,
+        storeValueType: 'boolean',
+        storeValueName: '',
+
+        selectedValue: null,
+        updateValueType: null,
+        updateValueName: null,
+        updateValueValue: null
     },
 
     created() {
@@ -98,21 +164,51 @@ const app = new Vue({
             this.fetchDevices();
         };
         con.onmessage = (type, data) => {
+            // Devices update broadcasts
             if (type == 'devices.store') {
+                data.device.values = [];
                 this.devices.push(data.device);
             }
-
             if (type == 'devices.update') {
-                // ...
+                const device = this.devices.find(device => device.id == data.device.id);
+                if (this.selectedDevice != null && this.selectedDevice.id == device.id && this.updateDeviceName == device.name) {
+                    this.updateDeviceName = data.device.name;
+                }
+                device.name = data.device.name;
             }
-
             if (type == 'devices.delete') {
                 this.devices = this.devices.filter(device => device.id != data.id);
+            }
+            if (type == 'devices.connect') {
+                const device = this.devices.find(device => device.id == data.device.id);
+                device.connected = true;
+            }
+            if (type == 'devices.disconnect') {
+                const device = this.devices.find(device => device.id == data.device.id);
+                device.connected = false;
+            }
+
+            // Values update broadcasts
+            if (type == 'values.store') {
+                const device = this.devices.find(device => device.id == data.value.device_id);
+                device.values.push(data.value);
+            }
+            if (type == 'values.update') {
+                const device = this.devices.find(device => device.id == data.value.device_id);
+                const value = device.values.find(value => value.id == data.value.id);
+                value.type = data.value.type;
+                value.name = data.value.name;
+                value.value = data.value.value;
+            }
+            if (type == 'values.delete') {
+                const device = this.devices.find(device => device.id == data.device_id);
+                device.values = device.values.filter(value => value.id != data.id);
             }
         };
     },
 
     methods: {
+        // Device methods
         fetchDevices() {
             con.send('devices.index', {}, data => {
                 this.devices = data.devices;
@@ -120,18 +216,84 @@ const app = new Vue({
             });
         },
 
-        newDevice() {
-            con.send('devices.store', { name: this.newDeviceName }, data => {
+        storeDevice() {
+            con.send('devices.store', { name: this.storeDeviceName }, data => {
                 if (data.success) {
+                    data.device.values = [];
                     this.devices.push(data.device);
-                    this.newDeviceName = '';
+                    this.storeDeviceName = '';
                 }
             });
+        },
+
+        selectDevice(device) {
+            if (this.selectedDevice != null && this.selectedDevice.id == device.id) {
+                this.selectedDevice = null;
+            } else {
+                this.selectedDevice = device;
+                this.updateDeviceName = device.name;
+            }
+        },
+
+        updateDevice() {
+            this.selectedDevice.name = this.updateDeviceName;
+            con.send('devices.update', {
+                id: this.selectedDevice.id,
+                name: this.selectedDevice.name
+            }, () => {});
         },
 
         deleteDevice(device) {
             this.devices = this.devices.filter(otherDevice => otherDevice.id != device.id);
             con.send('devices.delete', { id: device.id }, () => {});
+        },
+
+        // Values methods
+        storeValue() {
+            con.send('values.store', {
+                device_id: this.selectedDevice.id,
+                type: this.storeValueType,
+                name: this.storeValueName
+            }, data => {
+                if (data.success) {
+                    this.selectedDevice.values.push(data.value);
+                    this.storeValueName = '';
+                }
+            });
+        },
+
+        selectValue(value) {
+            if (this.selectedValue != null && this.selectedValue.id == value.id) {
+                this.selectedValue = null;
+            } else {
+                this.selectedValue = value;
+                this.updateValueType = value.type;
+                this.updateValueName = value.name;
+                this.updateValueValue = value.value;
+            }
+        },
+
+        updateValue() {
+            this.selectedValue.type = this.updateValueType;
+            this.selectedValue.name = this.updateValueName;
+            if (this.selectedValue.type == 'int') {
+                this.selectedValue.value = parseInt(this.updateValueValue);
+            } else if (this.selectedValue.type == 'float') {
+                this.selectedValue.value = parseFloat(this.updateValueValue);
+            } else {
+                this.selectedValue.value = this.updateValueValue;
+            }
+            con.send('values.update', {
+                id: this.selectedValue.id,
+                type: this.selectedValue.type,
+                name: this.selectedValue.name,
+                value: this.selectedValue.value
+            }, () => {});
+        },
+
+        deleteValue(value) {
+            this.selectedDevice.values = this.selectedDevice.values.filter(otherValue => otherValue.id != value.id);
+            con.send('values.delete', { id: value.id }, () => {});
         }
     }
 })
