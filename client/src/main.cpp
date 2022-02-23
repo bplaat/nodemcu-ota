@@ -6,6 +6,7 @@
 #include "config.hpp"
 
 #define INTERNAL_LED_PIN 2
+#define INTERNAL_LED2_PIN 16
 
 using namespace websockets;
 
@@ -98,6 +99,8 @@ void setup() {
 
     pinMode(INTERNAL_LED_PIN, OUTPUT);
     digitalWrite(INTERNAL_LED_PIN, HIGH); // Reversed
+    pinMode(INTERNAL_LED2_PIN, OUTPUT);
+    digitalWrite(INTERNAL_LED2_PIN, HIGH); // Reversed
 
     wifi_connect();
     ota_start();
